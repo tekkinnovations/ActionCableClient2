@@ -37,14 +37,16 @@ internal class JSONSerializer {
             }
             
             identifierDict["channel"] = "\(channel.name)"
-            
-            let JSONData = try JSONSerialization.data(withJSONObject: identifierDict, options: JSONSerialization.WritingOptions(rawValue: 0))
+
+            // Must use .sortedKeys to keep the identifier string constant
+            // across requests.
+            let JSONData = try JSONSerialization.data(withJSONObject: identifierDict, options: [.sortedKeys])
             guard let identifierString = NSString(data: JSONData, encoding: String.Encoding.utf8.rawValue)
                   else { throw SerializationError.json }
-            
+
             var commandDict = [
-                "command" : command.string,
-                "identifier" : identifierString
+              "command" : command.string,
+              "identifier" : identifierString
             ] as [String : Any]
             
             if let _ = data {
@@ -80,6 +82,7 @@ internal class JSONSerializer {
           
             var channelName: String?
             var channelIdentifier: String?
+            // idObj is a hash with channel and room_id keys
             if let idObj = JSONObj["identifier"] {
                 var idJSON: Dictionary<String, AnyObject>
                 if let idString = idObj as? String {
@@ -96,18 +99,24 @@ internal class JSONSerializer {
                 } else {
                     throw SerializationError.protocolViolation
                 }
-                
-                if let item = idJSON.first {
-                    channelIdentifier = item.value as? String
-                }
-                
+
                 if let nameStr = idJSON["channel"], let name = nameStr as? String {
-                  channelName = name
+                    channelName = name
+
+                    if idJSON.count > 1 {
+                        var identifier = name
+                        for key in idJSON.keys.filter({ $0 != "channel" }).sorted() {
+                            identifier += "-\(key):\(idJSON[key] as? String ?? "")"
+                        }
+                        channelIdentifier = identifier
+                    }
                 }
-                
-                if channelIdentifier != nil {
-                    channelName = channelIdentifier
-                }
+                // Why do we set the channel name to the identifier here?
+                // As far as I know the chanell name is distinct from the identifier.
+                // This breaks the client when uncommented.
+//                if let channelIdentifier = channelIdentifier {
+//                    channelName = channelIdentifier
+//               }
             }
           
             switch messageType {

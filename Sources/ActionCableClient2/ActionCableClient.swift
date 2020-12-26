@@ -56,6 +56,9 @@ open class ActionCableClient {
     /// On Rejected
     ///
     /// Called when the client has been rejected from connecting.
+    //
+    // I don't think this actually works yet. Can't find where this actually
+    // gets called.
     open var onRejected: (() -> Void)?
     /// On Ping
     ///
@@ -68,13 +71,13 @@ open class ActionCableClient {
     open var onChannelRejected: ((Channel) -> (Void))?
     open var onChannelReceive: ((Channel, Any?, Swift.Error?) -> Void)?
     
-    //MARK: Properties
+    // MARK: Properties
     open var isConnected: Bool = false
     open var url: Foundation.URL? { return socket.request.url }
     open var headers : [String: String]? {
         get { return socket.request.allHTTPHeaderFields }
         set {
-            for (field, value) in headers ?? [:] {
+            for (field, value) in newValue ?? [:] {
                 socket.request.setValue(value, forHTTPHeaderField: field)
             }
         }
@@ -95,6 +98,7 @@ open class ActionCableClient {
         let request = URLRequest(url: url)
         /// Setup Initialize Socket
         socket = WebSocket(request: request)
+        socket.delegate = self
     }
     
     public required init(url: URL, headers: [String: String]? = nil, origin : String? = nil) {
@@ -115,18 +119,17 @@ open class ActionCableClient {
     /// Connect with the server
     @discardableResult
     open func connect() -> ActionCableClient {
-        DispatchQueue.main.async {
-          if let callback = self.willConnect {
-            callback()
-          }
-          
-          ActionCableConcurrentQueue.async {
-            self.socket.connect()
-            self.reconnectionState = nil
-          }
+      DispatchQueue.main.async {
+        if let callback = self.willConnect {
+          callback()
         }
+        ActionCableConcurrentQueue.async {
+          self.socket.connect()
+          self.reconnectionState = nil
+        }
+      }
   
-        return self
+      return self
     }
   
     /// Disconnect from the server.
@@ -177,7 +180,7 @@ open class ActionCableClient {
         }
       
         // Let's check if we are connected.
-        //guard isConnected else { throw TransmitError.notConnected }
+        guard isConnected else { throw TransmitError.notConnected }
       
         socket.write(string: JSONString) {
           //FINISHED!
@@ -486,15 +489,9 @@ extension ActionCableClient {
 
 extension ActionCableClient : CustomDebugStringConvertible {
     public var debugDescription : String {
-            return "ActionCableClient(url: \"\(url)\" connected: \(isConnected) id: \(Unmanaged.passUnretained(self).toOpaque()))"
+      return "ActionCableClient(url: \"\(String(describing: url))\" connected: \(isConnected) id: \(Unmanaged.passUnretained(self).toOpaque()))"
     }
 }
-
-//extension ActionCableClient : CustomPlaygroundQuickLookable {
-//  public var customPlaygroundQuickLook: PlaygroundQuickLook {
-//        return PlaygroundQuickLook.url(url?.absoluteString)
-//    }
-//}
 
 extension ActionCableClient {
     func copyWithZone(_ zone: NSZone?) -> AnyObject! {
@@ -514,28 +511,32 @@ extension ActionCableClient: WebSocketDelegate {
     switch event {
     case .connected(let headers):
       isConnected = true
+      didConnect()
       print("websocket is connected: \(headers)")
     case .disconnected(let reason, let code):
       isConnected = false
+      didDisconnect(nil)
       print("websocket is disconnected: \(reason) with code: \(code)")
     case .text(let string):
       print("Received text: \(string)")
+      onText(string)
     case .binary(let data):
       print("Received data: \(data.count)")
+      onData(data)
     case .ping(_):
       break
     case .pong(_):
-      break
+      didPong()
     case .viabilityChanged(_):
       break
     case .reconnectSuggested(_):
       break
     case .cancelled:
       isConnected = false
-    case .error(let error):
-      isConnected = false
- //     handleError(error)
-
+      break
+    case .error(let _):
+      //     handleError(error)
+      break
     }
   }
 }
