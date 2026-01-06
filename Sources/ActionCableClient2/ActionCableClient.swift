@@ -507,7 +507,7 @@ extension ActionCableClient {
 
 
 extension ActionCableClient: WebSocketDelegate {
-  public func didReceive(event: WebSocketEvent, client: WebSocket) {
+  public func didReceive(event: WebSocketEvent, client: WebSocketClient) {
     switch event {
     case .connected(let headers):
       isConnected = true
@@ -534,8 +534,12 @@ extension ActionCableClient: WebSocketDelegate {
     case .cancelled:
       isConnected = false
       break
-    case .error(let _):
+    case .error(_):
       //     handleError(error)
+      break
+    case .peerClosed:
+      isConnected = false
+      didDisconnect(nil)
       break
     }
   }
